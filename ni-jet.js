@@ -31,7 +31,11 @@ void main(){
  vec2 back=uv-dt*v2;
  float old=texture(prevTex,clamp(back,0.,1.)).r;
  // Replenish smoothly advected dye; otherwise the pattern washes out at edges.
- float seed=.5+.27*sin(uv.x*125.0+uv.y*41.0)+.18*sin(uv.x*75.0-uv.y*93.0);
+ // Periodic wind-following replenishment prevents diffusion from flattening
+ // the texture after a few seconds; the flow keeps moving indefinitely.
+ float phase=tick*5.0;
+ float seed=.5+.27*sin(uv.x*125.0+uv.y*41.0-phase*(v2.x*125.0+v2.y*41.0))
+              +.18*sin(uv.x*75.0-uv.y*93.0-phase*(v2.x*75.0-v2.y*93.0));
  float noise=mix(old,seed,clamp(injection,0.,1.));
  result=vec4(noise,0.,0.,1.);
 }`;
@@ -136,7 +140,7 @@ function animate(t){
  gl.uniform1i(gl.getUniformLocation(adv,'prevTex'),0);
  gl.uniform1i(gl.getUniformLocation(adv,'flowTex'),1);
  // Signed velocity stored around 128/255; decode in shader.
- uniform(adv,'dt',dt*5);uniform(adv,'injection',.004);uniform(adv,'tick',t*.001);
+ uniform(adv,'dt',dt*5);uniform(adv,'injection',.065);uniform(adv,'tick',t*.001);
  gl.bindFramebuffer(gl.FRAMEBUFFER,fbo);
  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,states[(step+1)%2],0);
  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);step++;
