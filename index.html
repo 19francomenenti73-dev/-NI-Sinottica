@@ -150,7 +150,7 @@ async function refreshObservedRain(){
   const frame=frames[frames.length-1];
   if(!Number.isFinite(frame.time)||Date.now()/1000-frame.time>45*60||frame.time>Date.now()/1000+300)
    throw Error('Radar non recente');
-  if(!/^\/v2\/radar\/\d+$/.test(frame.path))throw Error('Percorso radar non valido');
+  if(!/^\/v2\/radar\/[a-zA-Z0-9_-]+$/.test(frame.path))throw Error('Percorso radar non valido');
   const host=new URL(data.host);
   if(host.protocol!=='https:'||host.hostname!=='tilecache.rainviewer.com')throw Error('Host radar non autorizzato');
   if(observedRainLayer&&observedRainLastTime===frame.time){
