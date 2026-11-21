@@ -144,7 +144,7 @@ async function refreshObservedRain(){
   // Publish this manifest only after the OPERA NIMBUS data pipeline is validated.
   const url='https://19francomenenti73-dev.github.io/Dashboard-Enterprise/data/opera_nimbus/manifest.json?t='+Date.now();
   const manifest=await json(url);
-  if(manifest.product!=='OPERA_NIMBUS_RRATE'||manifest.units!=='mm/h'||manifest.license!=='CC BY 4.0'||manifest.rain_only!==true||manifest.transparent_no_rain!==true)throw Error('maschera precipitazioni non verificata');
+  if(manifest.product!=='OPERA_NIMBUS_RRATE'||manifest.units!=='presence'||manifest.license!=='CC BY 4.0'||manifest.rain_only!==true||manifest.transparent_no_rain!==true)throw Error('maschera precipitazioni non verificata');
   const when=Date.parse(manifest.observed_utc);
   if(!Number.isFinite(when)||when>Date.now()+5*60000||Date.now()-when>45*60000)throw Error('osservazione non recente');
   if(!Array.isArray(manifest.bounds)||manifest.bounds.length!==2||!manifest.image||!/^[a-z0-9_-]+\.png$/i.test(manifest.image))throw Error('geometria radar non verificata');
@@ -158,7 +158,7 @@ async function refreshObservedRain(){
   if(observedRainLayer&&map.hasLayer(observedRainLayer))map.removeLayer(observedRainLayer);
   observedRainLayer=nextLayer;
   observedRainToggle.disabled=false;
-  observedRainStatus.textContent='OPERA NIMBUS · '+manifest.observed_utc+' · mm/h · CC BY 4.0';
+  observedRainStatus.textContent='OPERA NIMBUS · '+manifest.observed_utc+' · zone con precipitazione osservata · CC BY 4.0';
   if(observedRainToggle.checked)observedRainLayer.addTo(map);
  }catch(e){
   if(observedRainLayer&&map.hasLayer(observedRainLayer))map.removeLayer(observedRainLayer);
