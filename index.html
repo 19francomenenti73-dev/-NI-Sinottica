@@ -136,6 +136,7 @@ document.getElementById('satellite').onchange=e=>{
  document.getElementById('satCompare').textContent=e.target.checked?'Confronto visivo GFS/satellite · orario immagine non verificato · nessuna validazione automatica':'Confronto satellitare non attivo';
 };
 map.createPane('candidateFronts').style.zIndex=470;
+map.createPane('isobarTouch').style.zIndex=490;
 const groups=Object.fromEntries(['fronts','candidates','isobars','pressure','jet'].map(k=>[k,L.layerGroup()]));
 for(const k of Object.keys(groups))if(document.getElementById(k).checked)groups[k].addTo(map);
 let frames=[],index=0,timer=null;
@@ -196,6 +197,21 @@ function draw(){
  if(key==='pressure')layer.bindPopup('<b>Centro '+(type==='high'?'alta':'bassa')+' pressione</b><p>Pressione: '+(Number.isFinite(center)?center.toFixed(1)+' hPa':'non disponibile')+'</p><p>Validità: '+frame.valid_utc+'</p>');
  if(layer.getPopup())layer.on('click',e=>{if(e.originalEvent)L.DomEvent.stopPropagation(e.originalEvent)});
 }}).addTo(groups[key]);
+  if(key==='isobars'){
+   // Invisible, finger-sized touch target above the animated jet canvas.
+   // The visible isobars retain their existing style.
+   L.geoJSON(fc,{
+    pane:'isobarTouch',
+    style:{color:'#ffffff',weight:22,opacity:0.001,interactive:true},
+    onEachFeature:(f,layer)=>{
+     const p=Number(f.properties?.value);
+     layer.bindPopup('<b>Isobara NOAA GFS</b><p>Pressione: <b>'+
+      (Number.isFinite(p)?p.toFixed(0)+' hPa':'non disponibile')+
+      '</b></p><p>Validità: '+frame.valid_utc+'</p>');
+     layer.on('click',e=>{if(e.originalEvent)L.DomEvent.stopPropagation(e.originalEvent)});
+    }
+   }).addTo(groups.isobars);
+  }
  }
  notice('MODELLO PREVISIONALE · Fonte: '+frame.source+' · run '+(frame.run_utc||'?')+' · validità: '+frame.valid_utc+' · '+(index+1)+'/'+frames.length+' · Zone candidate: '+countCandidates+(countCandidates?'':' (nessuna rilevata)'));
  document.getElementById('fronts').disabled=!frontsValid;
