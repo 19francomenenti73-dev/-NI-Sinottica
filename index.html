@@ -189,7 +189,13 @@ function draw(){
     return L.marker(ll,{icon:L.divIcon({className:'',html:'<div style="color:'+color+';font-weight:900;font-size:26px;text-align:center;text-shadow:0 1px white">'+label+'<div style="font-size:12px">'+(Number.isFinite(p)?p.toFixed(0):'')+'</div></div>',iconSize:[48,50]})});
    }
    return L.circleMarker(ll,{radius:3});
-  },onEachFeature:(f,layer)=>{if(key==='candidates'){const g=Number(f.properties?.max_gradient_k_per_100km);layer.bindPopup('<b>Zona frontale candidata GFS 850 hPa</b><p>Gradiente termico: '+(Number.isFinite(g)?g.toFixed(1)+' K/100 km':'non disponibile')+'</p><p>Non validata. Confrontare con le nubi satellitari solo a orari coerenti; una banda nuvolosa non dimostra un fronte al suolo.</p>')}}}).addTo(groups[key]);
+  },onEachFeature:(f,layer)=>{
+ const p=Number(f.properties?.value),center=Number(f.properties?.pressure_hpa),type=f.properties?.type;
+ if(key==='candidates'){const g=Number(f.properties?.max_gradient_k_per_100km);layer.bindPopup('<b>Zona candidata GFS 850 hPa</b><p>Gradiente: '+(Number.isFinite(g)?g.toFixed(1)+' K/100 km':'non disponibile')+'</p><p>Non validata.</p>')}
+ if(key==='isobars')layer.bindPopup('<b>Isobara NOAA GFS</b><p>Pressione: '+(Number.isFinite(p)?p.toFixed(0)+' hPa':'non disponibile')+'</p><p>Validità: '+frame.valid_utc+'</p>');
+ if(key==='pressure')layer.bindPopup('<b>Centro '+(type==='high'?'alta':'bassa')+' pressione</b><p>Pressione: '+(Number.isFinite(center)?center.toFixed(1)+' hPa':'non disponibile')+'</p><p>Validità: '+frame.valid_utc+'</p>');
+ if(layer.getPopup())layer.on('click',e=>{if(e.originalEvent)L.DomEvent.stopPropagation(e.originalEvent)});
+}}).addTo(groups[key]);
  }
  notice('MODELLO PREVISIONALE · Fonte: '+frame.source+' · run '+(frame.run_utc||'?')+' · validità: '+frame.valid_utc+' · '+(index+1)+'/'+frames.length+' · Zone candidate: '+countCandidates+(countCandidates?'':' (nessuna rilevata)'));
  document.getElementById('fronts').disabled=!frontsValid;
@@ -207,6 +213,20 @@ async function weather(){
   draw();
  }catch(e){frames=[];document.getElementById('fronts').disabled=true;Object.values(groups).forEach(g=>g.clearLayers());notice('Dati meteorologici assenti o scaduti: nessuna rappresentazione meteo')}
 }
+// Jet popups read the same real 250 hPa GFS U/V vectors as the independent WebGL animation.
+function sampleJet(w,lat,lon){
+ const axis=(arr,v)=>{if(!Array.isArray(arr)||arr.length<2)return null;const asc=arr[1]>arr[0];if(asc?(v<arr[0]||v>arr.at(-1)):(v>arr[0]||v<arr.at(-1)))return null;let a=0,b=arr.length-1;while(b-a>1){let m=(a+b)>>1;if((arr[m]<=v)===asc)a=m;else b=m}return {i:a,t:(v-arr[a])/(arr[b]-arr[a])}};
+ const x=axis(w.lon,lon),y=axis(w.lat,lat);if(!x||!y)return null;
+ const interp=g=>{const a=g?.[y.i]?.[x.i],b=g?.[y.i]?.[x.i+1],c=g?.[y.i+1]?.[x.i],d=g?.[y.i+1]?.[x.i+1];if(![a,b,c,d].every(Number.isFinite))return null;return (a*(1-x.t)+b*x.t)*(1-y.t)+(c*(1-x.t)+d*x.t)*y.t};
+ const u=interp(w.u),v=interp(w.v);return u===null||v===null?null:{u,v};
+}
+map.on('click',e=>{
+ const f=frames[index];if(!f?.wind_vectors||!document.getElementById('jet').checked||!map.hasLayer(groups.jet))return;
+ const w=sampleJet(f.wind_vectors,e.latlng.lat,e.latlng.lng);if(!w)return;
+ const speed=Math.hypot(w.u,w.v)*3.6;if(speed<85)return;
+ const toward=(Math.atan2(w.u,w.v)*180/Math.PI+360)%360;
+ L.popup({maxWidth:270}).setLatLng(e.latlng).setContent('<b>Jet NOAA GFS · 250 hPa</b><p>Velocità prevista: <b>'+speed.toFixed(0)+' km/h</b></p><p>Direzione verso: '+toward.toFixed(0)+'° · provenienza: '+((toward+180)%360).toFixed(0)+'°</p><p>U: '+w.u.toFixed(1)+' m/s · V: '+w.v.toFixed(1)+' m/s</p><p>Validità: '+f.valid_utc+'</p><small>Vettori GFS interpolati, non osservazione diretta.</small>').openOn(map);
+});
 for(const k of Object.keys(groups))document.getElementById(k).onchange=e=>e.target.checked?groups[k].addTo(map):map.removeLayer(groups[k]);
 function move(n){if(!frames.length)return;index=(index+n+frames.length)%frames.length;draw()}
 document.getElementById('prev').onclick=()=>move(-1);
