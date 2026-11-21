@@ -139,34 +139,50 @@ map.createPane('observedRainPane').style.zIndex=360;
 const observedRainToggle=document.getElementById('observedRain');
 const observedRainStatus=document.getElementById('rainStatus');
 let observedRainLayer=null;
+let observedRainLastTime=0;
 async function refreshObservedRain(){
  try{
-  // Publish this manifest only after the OPERA NIMBUS data pipeline is validated.
-  const url='https://19francomenenti73-dev.github.io/Dashboard-Enterprise/data/opera_nimbus/manifest.json?t='+Date.now();
-  const manifest=await json(url);
-  if(manifest.product!=='OPERA_NIMBUS_RRATE'||manifest.units!=='presence'||manifest.license!=='CC BY 4.0'||manifest.rain_only!==true||manifest.transparent_no_rain!==true)throw Error('maschera precipitazioni non verificata');
-  const when=Date.parse(manifest.observed_utc);
-  if(!Number.isFinite(when)||when>Date.now()+5*60000||Date.now()-when>45*60000)throw Error('osservazione non recente');
-  if(!Array.isArray(manifest.bounds)||manifest.bounds.length!==2||!manifest.image||!/^[a-z0-9_-]+\.png$/i.test(manifest.image))throw Error('geometria radar non verificata');
-  const imageUrl='https://19francomenenti73-dev.github.io/Dashboard-Enterprise/data/opera_nimbus/'+manifest.image+'?t='+Date.now();
-  const nextLayer=L.imageOverlay(imageUrl,manifest.bounds,{pane:'observedRainPane',opacity:.55,interactive:false,attribution:'Radar © EUMETNET OPERA · CC BY 4.0'});
-  nextLayer.on('error',()=>{
-   if(map.hasLayer(nextLayer))map.removeLayer(nextLayer);
-   observedRainToggle.checked=false;observedRainToggle.disabled=true;
-   observedRainStatus.textContent='Radar non disponibile: immagine non caricata';
+  const response=await fetch('https://api.rainviewer.com/public/weather-maps.json',{cache:'no-store'});
+  if(!response.ok)throw Error('Radar HTTP '+response.status);
+  const data=await response.json();
+  const frames=data?.radar?.past;
+  if(!Array.isArray(frames)||!frames.length)throw Error('Nessuna osservazione radar');
+  const frame=frames[frames.length-1];
+  if(!Number.isFinite(frame.time)||Date.now()/1000-frame.time>45*60||frame.time>Date.now()/1000+300)
+   throw Error('Radar non recente');
+  if(!/^\/v2\/radar\/\d+$/.test(frame.path))throw Error('Percorso radar non valido');
+  const host=new URL(data.host);
+  if(host.protocol!=='https:'||host.hostname!=='tilecache.rainviewer.com')throw Error('Host radar non autorizzato');
+  if(observedRainLayer&&observedRainLastTime===frame.time){
+   observedRainToggle.disabled=false;
+   return;
+  }
+  const tiles=host.origin+frame.path+'/256/{z}/{x}/{y}/2/1_0.png';
+  const next=L.tileLayer(tiles,{
+   pane:'observedRainPane',opacity:.8,maxNativeZoom:7,maxZoom:18,
+   tileSize:256,attribution:'Dati radar: <a href="https://www.rainviewer.com/" target="_blank" rel="noopener noreferrer">RainViewer</a>'
   });
+  next.on('tileerror',()=>{observedRainStatus.textContent='Radar RainViewer: alcune tessere non disponibili';});
   if(observedRainLayer&&map.hasLayer(observedRainLayer))map.removeLayer(observedRainLayer);
-  observedRainLayer=nextLayer;
+  observedRainLayer=next;
+  observedRainLastTime=frame.time;
   observedRainToggle.disabled=false;
-  observedRainStatus.textContent='OPERA NIMBUS · '+manifest.observed_utc+' · zone con precipitazione osservata · CC BY 4.0';
+  observedRainStatus.textContent='Pioggia osservata · RainViewer · '+new Date(frame.time*1000).toLocaleTimeString('it-IT',{timeZone:'UTC',hour:'2-digit',minute:'2-digit'})+' UTC';
   if(observedRainToggle.checked)observedRainLayer.addTo(map);
  }catch(e){
   if(observedRainLayer&&map.hasLayer(observedRainLayer))map.removeLayer(observedRainLayer);
-  observedRainLayer=null;observedRainToggle.checked=false;observedRainToggle.disabled=true;
-  observedRainStatus.textContent='Radar osservativo non disponibile: dati NIMBUS non verificati';
+  observedRainLayer=null;
+  observedRainLastTime=0;
+  observedRainToggle.checked=false;
+  observedRainToggle.disabled=true;
+  observedRainStatus.textContent='Radar pioggia temporaneamente non disponibile';
  }
 }
-observedRainToggle.onchange=()=>{if(!observedRainLayer)return;if(observedRainToggle.checked)observedRainLayer.addTo(map);else map.removeLayer(observedRainLayer)};
+observedRainToggle.onchange=()=>{
+ if(!observedRainLayer)return;
+ if(observedRainToggle.checked)observedRainLayer.addTo(map);
+ else map.removeLayer(observedRainLayer);
+};
 refreshObservedRain();
 setInterval(refreshObservedRain,5*60*1000);
 map.createPane('candidateFronts').style.zIndex=470;
