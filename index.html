@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SINOTTICA — Nowcasting Italia</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box}html,body{margin:0;height:100%;font:14px system-ui;background:#aabfc9;color:#eaf8ff}
+header{height:64px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 15px;background:#061d38;border-bottom:2px solid #27c5f0}
+header strong{font-size:clamp(16px,3vw,25px)}header>div:last-child{display:flex;gap:4px;flex-shrink:0}small{color:#a7d7ee}
+#map{height:calc(100% - 64px);background:#aabfc9}
+.panel{position:absolute;z-index:700;background:#061d38ed;border:1px solid #3a9bcb;border-radius:10px;padding:10px;box-shadow:0 3px 12px #0005}
+.layers{right:12px;top:76px;max-width:180px}.legend{left:12px;bottom:20px}.status{left:12px;top:76px;max-width:min(48vw,430px)}
+label{display:block;margin:7px 0}button{background:#114c76;border:1px solid #48bde6;color:white;padding:7px;border-radius:6px;cursor:pointer}
+.sample{display:inline-block;width:22px;border-top:3px solid;margin-right:7px}.cold{border-color:#2059ff}.warm{border-color:#f3323d}.occluded{border-color:#b344db}.iso{border-color:#333}
+@media(max-width:650px){header{height:76px;padding:6px;gap:5px}header strong{font-size:16px}header small{font-size:9px;display:block;max-width:210px;line-height:1.2}header button{padding:7px 5px;min-width:30px}#map{height:calc(100% - 76px)}.layers{top:86px;right:6px;font-size:11px;max-width:125px;padding:7px}.status{top:86px;left:6px;max-width:calc(100vw - 151px);font-size:10px;padding:7px}.legend{font-size:10px;left:6px;bottom:6px;padding:6px}.leaflet-control-zoom{margin-top:100px!important}}
+body.fullscreen-fallback{position:fixed;inset:0;z-index:999999;background:#061d38}body.fullscreen-fallback #map{height:calc(100dvh - 64px)}
+@media(max-width:650px){body.fullscreen-fallback #map{height:calc(100dvh - 76px)}}
+</style></head><body>
+<header><div><strong>N.I. SINOTTICA</strong><div><small>Nowcasting Italia · Natural Earth (pubblico dominio) · NOAA GFS · Leaflet BSD-2-Clause</small></div></div><div><button id="prev">◀</button><button id="play">▶</button><button id="next">▶|</button><button id="full">⛶</button></div></header>
+<div id="map"></div>
+<div class="panel layers" id="layersPanel"><button id="toggleLayers" type="button" aria-expanded="true" style="background:transparent;border:0;color:#e9f7ff;font-weight:700;cursor:pointer;padding:0 4px 5px 0">Livelli ▾</button><div id="layersContent"><label><input id="satellite" type="checkbox"> Satellite RGB EUMETSAT</label><label><input id="fronts" type="checkbox" disabled> Fronti validati (non disponibili)</label><label><input id="candidates" type="checkbox"> Zone frontali sperimentali</label><label><input id="isobars" type="checkbox" checked> Isobare</label><label><input id="pressure" type="checkbox" checked> H / L</label><label><input id="jet" type="checkbox" checked> Jet 250 hPa (flusso reale U/V)</label></div></div>
+<div class="panel legend"><b>Legenda</b><div><i class="sample iso"></i>Isobare NOAA GFS</div><div style="color:#ff5050">H — alta pressione</div><div style="color:#238dff">L — bassa pressione</div><div style="font-size:10px;opacity:.8">Zone frontali sperimentali: rosso vicino a H, blu vicino a L; non indica fronte caldo/freddo</div></div>
+<div class="panel status" id="status">Caricamento cartografia locale…</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+'use strict';
+const map=L.map('map',{preferCanvas:true,minZoom:3,maxZoom:9,maxBounds:[[-12,-35],[78,55]],maxBoundsViscosity:1}).setView([44,10],4);
+map.createPane('bathymetry').style.zIndex=205;
+map.createPane('baseLand').style.zIndex=210;
+map.createPane('relief').style.zIndex=215;
+map.createPane('baseLines').style.zIndex=220;
+map.createPane('satelliteRGB').style.zIndex=225;
+const status=document.getElementById('status');
+const layersPanel=document.getElementById('layersPanel'),layersContent=document.getElementById('layersContent'),layersToggle=document.getElementById('toggleLayers');
+function setLayersOpen(open){layersContent.hidden=!open;layersToggle.textContent=open?'Livelli ▾':'Livelli ▸';layersToggle.setAttribute('aria-expanded',String(open))}
+layersToggle.onclick=()=>setLayersOpen(layersContent.hidden);
+if(matchMedia('(max-width:650px)').matches)setLayersOpen(false);
+function notice(s){status.textContent=s}
+async function json(url){const r=await fetch(url);if(!r.ok)throw Error(url+' HTTP '+r.status);return r.json()}
+async function terrain(){
+ try{
+  const t=await json('https://19francomenenti73-dev.github.io/Dashboard-Enterprise/data/cartografia/terrain.json');
+  if(!Array.isArray(t.bounds)||t.bounds.length!==2)throw Error('Invalid terrain bounds');
+  if(t.sea)L.imageOverlay(t.sea,t.bounds,{pane:'bathymetry',opacity:.8,interactive:false}).addTo(map);
+  if(t.land)L.imageOverlay(t.land,t.bounds,{pane:'relief',opacity:.7,interactive:false}).addTo(map);
+ }catch(e){console.info('Optional terrain unavailable:',e.message)}
+}
+async function base(){
+ const specs=[
+  ['land.geojson','baseLand',{color:'#8499a5',weight:.7,fillColor:'#e6e5e0',fillOpacity:1}],
+  ['lakes.geojson','baseLines',{color:'#829fad',weight:.5,fillColor:'#aabfc9',fillOpacity:1}],
+  ['boundaries.geojson','baseLines',{color:'#9fa5a6',weight:.6,fill:false}]
+ ];
+ let loaded=0;
+ for(const [file,pane,style] of specs){
+  try{L.geoJSON(await json('https://19francomenenti73-dev.github.io/Dashboard-Enterprise/data/cartografia/'+file),{pane,style,interactive:false}).addTo(map);loaded++}
+  catch(e){console.warn(e)}
+ }
+ notice(loaded===3?'Cartografia Natural Earth caricata · in attesa dei dati meteorologici':'Cartografia incompleta: generare i GeoJSON nel workflow');
+}
+// Same official EUMETSAT WMS service already used by Z.E.U.S.; no image copying.
+const satellite=L.tileLayer.wms('https://view.eumetsat.int/geoserver/wms',{
+ layers:'mtg_fd:rgb_geocolour',format:'image/png',transparent:true,
+ version:'1.1.1',pane:'satelliteRGB',opacity:.83,
+ attribution:'© EUMETSAT — satellite RGB (orario acquisizione non verificato)'
+});
+let satelliteErrors=0;
+satellite.on('tileerror',()=>{if(++satelliteErrors>=3){map.removeLayer(satellite);document.getElementById('satellite').checked=false;notice('Satellite EUMETSAT non disponibile: mantenuta cartografia sinottica')}});
+document.getElementById('satellite').onchange=e=>{
+ satelliteErrors=0;
+ if(e.target.checked)satellite.addTo(map);else map.removeLayer(satellite);
+};
+const groups=Object.fromEntries(['fronts','candidates','isobars','pressure','jet'].map(k=>[k,L.layerGroup().addTo(map)]));
+let frames=[],index=0,timer=null;
+
+const playButton=document.getElementById('play');
+function stopPlayback(){if(timer)clearInterval(timer);timer=null;playButton.textContent='▶';playButton.setAttribute('aria-label','Riproduci previsioni')}
+playButton.setAttribute('aria-label','Riproduci previsioni');
+function draw(){
+ Object.values(groups).forEach(g=>g.clearLayers());
+ const frame=frames[index];if(!frame)return;
+ const validDate=Date.parse(frame.valid_utc);
+ const ageHours=(Date.now()-validDate)/3600000;
+ const stale=!Number.isFinite(validDate)||ageHours>9;
+ if(stale){Object.values(groups).forEach(g=>g.clearLayers());notice('Dati meteorologici scaduti: ultimo valido '+frame.valid_utc+' · mappa non aggiornata');return;}
+ const frontsValid=frame.fronts_status==='validated';
+ // Candidate zones are colored by proximity to a GFS pressure center, NOT by front type.
+ const centers=(frame.pressure?.features||[]).filter(f=>['high','low'].includes(String(f.properties?.type||'').toLowerCase())&&f.geometry?.type==='Point');
+ function candidateColor(f){
+  const coords=f.geometry?.coordinates;
+  if(!Array.isArray(coords)||!coords.length||!centers.length)return '#b5beca';
+  const p=coords[Math.floor(coords.length/2)];if(!Array.isArray(p))return '#b5beca';
+  let nearest=null,dist=Infinity;
+  for(const c of centers){const q=c.geometry.coordinates,dy=(p[1]-q[1]),dx=(p[0]-q[0])*Math.cos(p[1]*Math.PI/180),d=dx*dx+dy*dy;
+   if(d<dist){dist=d;nearest=c}}
+  return nearest?.properties?.type==='high'?'#f03232':'#007bff';
+ }
+ document.getElementById('fronts').disabled=!frontsValid;
+ if(!frontsValid&&map.hasLayer(groups.fronts))map.removeLayer(groups.fronts);
+ if(frontsValid&&document.getElementById('fronts').checked&&!map.hasLayer(groups.fronts))groups.fronts.addTo(map);
+ for(const key of Object.keys(groups)){
+  const fc=key==='candidates'?frame.frontal_candidates:frame[key];if(key==='fronts'&&!frontsValid)continue;
+  if(key==='jet')continue; // Jet is rendered as a continuous canvas field, not contour dashes.
+  if(!fc||fc.type!=='FeatureCollection')continue;
+  L.geoJSON(fc,{style:f=>{
+   const type=String(f.properties?.type||'').toLowerCase();
+   return {color:key==='candidates'?candidateColor(f):key==='isobars'?'#26333c':key==='jet'?'#6b9cc1':({cold:'#2059ff',warm:'#f3323d',occluded:'#b344db',stationary:'#2059ff'}[type]||'#536477'),weight:key==='candidates'?3.2:key==='isobars'?0.85:1.6,opacity:key==='candidates'?.7:key==='jet'?.42:.65,dashArray:key==='candidates'?'6 7':null};
+  },pointToLayer:(f,ll)=>{
+   const type=String(f.properties?.type||'').toLowerCase();
+   if(key==='pressure'&&['high','low'].includes(type)){
+    const label=type==='high'?'H':'L',p=Number(f.properties?.pressure_hpa);
+    const color=label==='H'?'#f03232':'#007bff';
+    return L.marker(ll,{icon:L.divIcon({className:'',html:'<div style="color:'+color+';font-weight:900;font-size:26px;text-align:center;text-shadow:0 1px white">'+label+'<div style="font-size:12px">'+(Number.isFinite(p)?p.toFixed(0):'')+'</div></div>',iconSize:[48,50]})});
+   }
+   return L.circleMarker(ll,{radius:3});
+  }}).addTo(groups[key]);
+ }
+ notice('MODELLO PREVISIONALE · Fonte: '+frame.source+' · run '+(frame.run_utc||'?')+' · validità: '+frame.valid_utc+' · '+(index+1)+'/'+frames.length+' · Fronti: '+(frontsValid?'validati':'non validati'));
+ document.getElementById('fronts').disabled=!frontsValid;
+}
+async function weather(){
+ try{
+  const data=await json('https://19francomenenti73-dev.github.io/Dashboard-Enterprise/data/sinottica.json?t='+Date.now());
+  if(!Array.isArray(data.frames)||!data.frames.length)throw Error('nessun dato');
+  frames=data.frames.filter(f=>f&&f.source&&f.valid_utc&&f.run_utc&&f.isobars?.type==='FeatureCollection'&&Number.isFinite(Date.parse(f.valid_utc)));
+  const current=Date.now();
+  const fresh=frames.findIndex(f=>Date.parse(f.valid_utc)>=current-3*3600000);
+  if(fresh<0)throw Error('previsioni scadute');
+  index=fresh;
+  if(!frames.length)throw Error('fonte o orario mancanti');
+  draw();
+ }catch(e){frames=[];document.getElementById('fronts').disabled=true;Object.values(groups).forEach(g=>g.clearLayers());notice('Dati meteorologici assenti o scaduti: nessuna rappresentazione meteo')}
+}
+for(const k of Object.keys(groups))document.getElementById(k).onchange=e=>e.target.checked?groups[k].addTo(map):map.removeLayer(groups[k]);
+function move(n){if(!frames.length)return;index=(index+n+frames.length)%frames.length;draw()}
+document.getElementById('prev').onclick=()=>move(-1);
+document.getElementById('next').onclick=()=>move(1);
+playButton.onclick=()=>{if(timer){stopPlayback();return}if(frames.length<2)return;playButton.textContent='❚❚';playButton.setAttribute('aria-label','Pausa');timer=setInterval(()=>move(1),1600)};
+const fullButton=document.getElementById('full');
+function toggleLocalFullscreen(){
+ const on=document.body.classList.toggle('fullscreen-fallback');
+ fullButton.textContent=on?'✕':'⛶';
+ setTimeout(()=>map.invalidateSize(),100);
+}
+fullButton.setAttribute('aria-label','Apri Sinottica a schermo intero');
+fullButton.onclick=()=>{
+ // Google Sites embeds the Dashboard inside another iframe. A new top-level
+ // page is the only reliable way to escape that viewport on mobile.
+ if(window.top!==window.self){
+   const tab=window.open(new URL('sinottica.html',location.href).href,'_blank','noopener');
+   if(!tab){
+     const a=document.createElement('a');a.href=new URL('sinottica.html',location.href).href;
+     a.target='_blank';a.rel='noopener';a.textContent='Apri Sinottica in una nuova scheda';
+     a.style.cssText='position:absolute;z-index:1200;top:80px;left:12px;background:#103c60;color:white;padding:14px;border-radius:8px';
+     document.body.appendChild(a);
+   }
+   return;
+ }
+ if(document.fullscreenElement){document.exitFullscreen().catch(()=>toggleLocalFullscreen());return}
+ if(document.documentElement.requestFullscreen){
+   document.documentElement.requestFullscreen().then(()=>map.invalidateSize()).catch(()=>toggleLocalFullscreen());
+ }else toggleLocalFullscreen();
+};
+document.addEventListener('fullscreenchange',()=>{fullButton.textContent=document.fullscreenElement?'✕':'⛶';map.invalidateSize()});
+base().then(terrain);weather();setInterval(weather,1800000);
+</script><script src="ni-jet.js"></script></body></html>
