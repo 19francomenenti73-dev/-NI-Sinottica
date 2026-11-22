@@ -37,7 +37,7 @@ function draw(t){
  const k=f.valid_utc+'|'+map.getZoom()+'|'+map.getCenter().toString()+'|'+s.x+'|'+s.y;
  if(k!==key){reset();key=k}
  ctx.fillStyle='rgba(0,0,0,.09)';ctx.globalCompositeOperation='destination-out';ctx.fillRect(0,0,s.x,s.y);ctx.globalCompositeOperation='source-over';
- ctx.strokeStyle='rgba(255,248,210,.95)';ctx.lineWidth=2.1;ctx.lineCap='round';
+ ctx.strokeStyle='rgba(160,35,245,.95)';ctx.lineWidth=2.1;ctx.lineCap='round';
  ctx.beginPath();
  for(const p of particles){
   const ll=map.containerPointToLatLng([p.x,p.y]),uv=sample(w,ll.lat,ll.lng);
