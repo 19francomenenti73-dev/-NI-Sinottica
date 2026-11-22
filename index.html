@@ -28,7 +28,7 @@ body.fullscreen-fallback{position:fixed;inset:0;z-index:999999;background:#061d3
 
 <header><div><strong>N.I. SINOTTICA</strong><div><small>Nowcasting Italia · Natural Earth (pubblico dominio) · NOAA GFS · Leaflet BSD-2-Clause</small></div></div><div><button id="prev">◀</button><button id="play">▶</button><button id="next">▶|</button><button id="full">⛶</button></div></header>
 <div id="map"></div>
-<div class="panel layers" id="layersPanel"><button id="toggleLayers" type="button" aria-expanded="true" style="background:transparent;border:0;color:#e9f7ff;font-weight:700;cursor:pointer;padding:0 4px 5px 0">Livelli ▾</button><div id="layersContent"><label><input id="satellite" type="checkbox"> Satellite RGB EUMETSAT</label><label><button id="waterVapour" type="button" disabled aria-pressed="false" style="width:100%;background:#a83232">🔴 Vapore acqueo · verifica</button></label><div id="satCompare" style="font-size:10px;line-height:1.3;color:#c1e4f5" role="status">Confronto satellitare non attivo</div><label><input id="fronts" type="checkbox" disabled hidden aria-hidden="true"><input id="candidates" type="checkbox" checked> Sinottica sperimentale</label><label><input id="isobars" type="checkbox" checked> Isobare</label><label><input id="pressure" type="checkbox" checked> H / L</label><label><input id="jet" type="checkbox" checked> Jet 250 hPa (flusso reale U/V)</label><label><input id="observedRain" type="checkbox" disabled> Pioggia osservata Europa</label><div id="rainStatus" style="font-size:10px;line-height:1.35;color:#b9d7e8">Radar RainViewer · caricamento osservazioni</div></div></div>
+<div class="panel layers" id="layersPanel"><button id="toggleLayers" type="button" aria-expanded="true" style="background:transparent;border:0;color:#e9f7ff;font-weight:700;cursor:pointer;padding:0 4px 5px 0">Livelli ▾</button><div id="layersContent"><label><input id="satellite" type="checkbox"> Satellite RGB EUMETSAT</label><label><button id="waterVapour" type="button" disabled aria-pressed="false" style="width:100%;background:#a83232">🔴 Vapore acqueo · verifica</button></label><div id="satCompare" style="font-size:10px;line-height:1.3;color:#c1e4f5" role="status">Confronto satellitare non attivo</div><label><input id="fronts" type="checkbox" disabled hidden aria-hidden="true"><input id="candidates" type="checkbox" checked> Sinottica sperimentale</label><label><input id="isobars" type="checkbox" checked> Isobare</label><label><input id="pressure" type="checkbox" checked> H / L</label><label><input id="jet" type="checkbox" checked> Jet 250 hPa (flusso reale U/V)</label><label><input id="surfaceWinds" type="checkbox"> Otto venti · 10 m</label><div id="windStatus" style="font-size:10px;line-height:1.35;color:#b9d7e8">Direzione NOAA GFS · in attesa dei dati</div><label><input id="observedRain" type="checkbox" disabled> Pioggia osservata Europa</label><div id="rainStatus" style="font-size:10px;line-height:1.35;color:#b9d7e8">Radar RainViewer · caricamento osservazioni</div></div></div>
 <div class="panel legend"><b>Legenda</b><div><i class="sample iso"></i>Isobare NOAA GFS · rosso aria più calda, blu più fredda (850 hPa), bianco neutro</div><div style="color:#ff5050">H — alta pressione</div><div style="color:#238dff">L — bassa pressione</div><div id="candidateLegend" style="font-size:11px;border-top:1px solid #4385a4;margin-top:5px;padding-top:5px"><b>Sinottica sperimentale · GFS 850 hPa</b><div><span style="color:#ff7777">━━</span> Zona candidata vicina ad alta pressione</div><div><span style="color:#65c9ff">━━</span> Zona candidata vicina a bassa pressione</div><div style="opacity:.85">Tracciati evidenziati · non sono fronti validati</div></div></div>
 <div class="panel status" id="status">Caricamento cartografia locale…</div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -187,7 +187,7 @@ refreshObservedRain();
 setInterval(refreshObservedRain,5*60*1000);
 map.createPane('candidateFronts').style.zIndex=470;
 map.createPane('isobarTouch').style.zIndex=490;
-const groups=Object.fromEntries(['fronts','candidates','isobars','pressure','jet'].map(k=>[k,L.layerGroup()]));
+const groups=Object.fromEntries(['fronts','candidates','isobars','pressure','jet','surfaceWinds'].map(k=>[k,L.layerGroup()]));
 for(const k of Object.keys(groups))if(document.getElementById(k).checked)groups[k].addTo(map);
 let frames=[],index=0,timer=null;
 
@@ -223,11 +223,11 @@ function draw(){
  if(frontsValid&&document.getElementById('fronts').checked&&!map.hasLayer(groups.fronts))groups.fronts.addTo(map);
  for(const key of Object.keys(groups)){
   const fc=key==='candidates'?frame.frontal_candidates:frame[key];if(key==='fronts'&&!frontsValid)continue;
-  if(key==='candidates'&&fc.type==='FeatureCollection'){
+  if(key==='candidates'&&fc?.type==='FeatureCollection'){
    // A dark halo keeps candidate boundaries readable over jet, satellite and isobars.
    L.geoJSON(fc,{pane:'candidateFronts',interactive:false,style:{color:'#061a32',weight:8,opacity:.88,lineCap:'round',lineJoin:'round'}}).addTo(groups.candidates);
   }
-  if(key==='jet')continue; // Jet is rendered as a continuous canvas field, not contour dashes.
+  if(key==='jet'||key==='surfaceWinds')continue; // Jet is rendered as a continuous canvas field, not contour dashes.
   if(!fc||fc.type!=='FeatureCollection')continue;
   L.geoJSON(fc,{pane:key==='candidates'?'candidateFronts':'overlayPane',style:f=>{
    const type=String(f.properties?.type||'').toLowerCase();
@@ -325,4 +325,4 @@ fullButton.onclick=()=>{
 };
 document.addEventListener('fullscreenchange',()=>{fullButton.textContent=document.fullscreenElement?'✕':'⛶';map.invalidateSize()});
 base().then(terrain);weather();setInterval(weather,1800000);
-</script><script src="ni-jet.js"></script></body></html>
+</script><script src="ni-jet.js"></script><script src="ni-winds.js"></script></body></html>
