@@ -2,7 +2,7 @@
 (function(){
 'use strict';
 const canvas=document.createElement('canvas');
-canvas.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:445;width:100%;height:100%';
+canvas.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:465;width:100%;height:100%';
 document.getElementById('map').appendChild(canvas);
 const ctx=canvas.getContext('2d');
 const toggle=document.getElementById('surfaceWinds');
@@ -26,24 +26,24 @@ function reset(){
  canvas.width=Math.round(s.x*ratio);canvas.height=Math.round(s.y*ratio);
  canvas.style.width=s.x+'px';canvas.style.height=s.y+'px';
  ctx.setTransform(ratio,0,0,ratio,0,0);
- particles=Array.from({length:Math.min(950,Math.floor(s.x*s.y/650))},()=>{let p={};seed(p,s.x,s.y);return p});
+ particles=Array.from({length:Math.min(1600,Math.floor(s.x*s.y/320))},()=>{let p={};seed(p,s.x,s.y);return p});
 }
 function draw(t){
  requestAnimationFrame(draw);
  if(t-last<35)return;last=t;
  const s=map.getSize(),f=frames[index],w=f?.surface_wind_vectors;
  const active=toggle.checked&&w&&map.hasLayer(groups.surfaceWinds);
- if(!active){ctx.clearRect(0,0,s.x,s.y);if(toggle.checked)status.textContent='Venti 10 m · dati non disponibili';return}
+ if(!active){ctx.clearRect(0,0,s.x,s.y);if(toggle.checked)status.textContent='Venti 10 m · dati U/V non presenti nel GFS pubblicato';return}
  const k=f.valid_utc+'|'+map.getZoom()+'|'+map.getCenter().toString()+'|'+s.x+'|'+s.y;
  if(k!==key){reset();key=k}
- ctx.fillStyle='rgba(0,0,0,.14)';ctx.globalCompositeOperation='destination-out';ctx.fillRect(0,0,s.x,s.y);ctx.globalCompositeOperation='source-over';
- ctx.strokeStyle='rgba(13,65,88,.78)';ctx.lineWidth=1.5;ctx.lineCap='round';
+ ctx.fillStyle='rgba(0,0,0,.09)';ctx.globalCompositeOperation='destination-out';ctx.fillRect(0,0,s.x,s.y);ctx.globalCompositeOperation='source-over';
+ ctx.strokeStyle='rgba(255,248,210,.95)';ctx.lineWidth=2.1;ctx.lineCap='round';
  ctx.beginPath();
  for(const p of particles){
   const ll=map.containerPointToLatLng([p.x,p.y]),uv=sample(w,ll.lat,ll.lng);
   if(!uv||Math.hypot(...uv)<.15||p.age++>85){seed(p,s.x,s.y);continue}
   // Constant visual displacement: wind magnitude never encoded in animation speed.
-  const len=Math.hypot(...uv),scale=1.8/len;
+  const len=Math.hypot(...uv),scale=3.3/len;
   const x=p.x+uv[0]*scale,y=p.y-uv[1]*scale;
   if(x<0||x>s.x||y<0||y>s.y){seed(p,s.x,s.y);continue}
   ctx.moveTo(p.x,p.y);ctx.lineTo(x,y);p.x=x;p.y=y;
